@@ -3,7 +3,9 @@ import { Chessboard } from "react-chessboard";
 import type { Square } from "chess.js";
 import { useChessGame } from "../hooks/useChessGame";
 import { FaMoon, FaSun } from "react-icons/fa";
- 
+import { GameControls } from "./GameControls";
+import { PromotionModal } from "./PromotionModal";
+import type { PromotionPiece } from "../types/chess.types";
 
 const THEMES = {
   dark: {
@@ -61,41 +63,115 @@ export function Board() {
     null,
   );
 
-  const t = THEMES[theme];
+  const [promotionMove, setPromotionMove] = useState<{
+    from: Square;
+    to: Square;
+    color: "w" | "b";
+  } | null>(null);
+
+  const t = THEMES[theme ?? "dark"];
   // ── Drag & drop ──────────────────────────────────────────────────────────
-  function onDrop(sourceSquare: string, targetSquare: string): boolean {
+
+  function onDrop(
+    sourceSquare: string,
+    targetSquare: string,
+    piece: string,
+  ): boolean {
+    // Vérifie que c'est un pion ET qu'il atteint la dernière rangée
+    const isPawn = piece === "wP" || piece === "bP";
+    const isPromotion =
+      isPawn &&
+      ((targetSquare[1] === "8" && gameState.turn === "w") ||
+        (targetSquare[1] === "1" && gameState.turn === "b"));
+
+    if (isPromotion) {
+      setPromotionMove({
+        from: sourceSquare as Square,
+        to: targetSquare as Square,
+        color: gameState.turn,
+      });
+      return false;
+    }
+
     const success = makeMove({
       from: sourceSquare as Square,
       to: targetSquare as Square,
       promotion: "q",
     });
+
     if (success) {
-      setLastMove({ from: sourceSquare as Square, to: targetSquare as Square });
+      setLastMove({
+        from: sourceSquare as Square,
+        to: targetSquare as Square,
+      });
       setSelectedSquare(null);
       setLegalSquares([]);
     }
+
     return success;
   }
 
+  //  la fonction de sélection handlePromotion
+  function handlePromotion(piece: PromotionPiece) {
+    if (!promotionMove) return;
+
+    const success = makeMove({
+      from: promotionMove.from,
+      to: promotionMove.to,
+      promotion: piece,
+    });
+
+    if (success) {
+      setLastMove({
+        from: promotionMove.from,
+        to: promotionMove.to,
+      });
+    }
+
+    setPromotionMove(null);
+  }
   // ── Clic sur une case ─────────────────────────────────────────────────────
   const onSquareClick = useCallback(
     (square: Square) => {
-      // Si une pièce est déjà sélectionnée et on clique sur une case légale → joue le coup
       if (selectedSquare && legalSquares.includes(square)) {
+        // ✔️ Détection simple promotion (FIABLE)
+        const isPromotion =
+          (gameState.turn === "w" &&
+            selectedSquare[1] === "7" &&
+            square[1] === "8") ||
+          (gameState.turn === "b" &&
+            selectedSquare[1] === "2" &&
+            square[1] === "1");
+
+        if (isPromotion) {
+          setPromotionMove({
+            from: selectedSquare,
+            to: square,
+            color: gameState.turn,
+          });
+
+          setSelectedSquare(null);
+          setLegalSquares([]);
+          return;
+        }
+
+        // ✔️ coup normal
         const success = makeMove({
           from: selectedSquare,
           to: square,
           promotion: "q",
         });
+
         if (success) {
           setLastMove({ from: selectedSquare, to: square });
         }
+
         setSelectedSquare(null);
         setLegalSquares([]);
         return;
       }
 
-      // Sinon → sélectionne la pièce et affiche ses coups légaux
+      // Sélection pièce
       const moves = getLegalMoves(square);
       if (moves.length > 0) {
         setSelectedSquare(square);
@@ -105,7 +181,7 @@ export function Board() {
         setLegalSquares([]);
       }
     },
-    [selectedSquare, legalSquares, makeMove, getLegalMoves],
+    [selectedSquare, legalSquares, makeMove, getLegalMoves, gameState.turn],
   );
 
   // ── Styles des cases ──────────────────────────────────────────────────────
@@ -184,7 +260,7 @@ export function Board() {
       <div
         style={{
           background: t.bgHeader,
-          width: "80%",
+          width: "100%",
           height: "50px",
           maxWidth: "900px",
           display: "flex",
@@ -213,10 +289,17 @@ export function Board() {
             AndChess
           </h1>
         </div>
-
+        <GameControls
+          onReset={resetGame}
+          onResign={() => {}}
+          isGameOver={gameState.isGameOver}
+          theme={t}
+        />
         {/* Bouton Dark / Light */}
         <button
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onClick={() =>
+            setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+          }
           style={{
             background: t.surface2,
             color: t.text,
@@ -233,7 +316,7 @@ export function Board() {
           }}
         >
           {theme === "dark" ? <FaSun /> : <FaMoon />}
-           {theme === "dark" ? " Light" : " Dark"}
+          {theme === "dark" ? " Light" : " Dark"}
         </button>
       </div>
 
@@ -242,36 +325,14 @@ export function Board() {
         style={{
           display: "flex",
           gap: "24px",
-          alignItems: "flex-start",
+          alignItems: "center",
           width: "100%",
-          maxWidth: "520px",
+          height: "auto",
           flexWrap: "wrap",
           justifyContent: "center",
         }}
       >
-        {/* ── Plateau ── */}
-        <div
-          style={{
-            background: t.surface,
-            borderRadius: "12px",
-            padding: "10px",
-            border: `1px solid ${t.border}`,
-            boxShadow: "0 20px 60px rgba(181, 135, 99, 0.64)",
-          }}
-        >
-          <Chessboard
-            position={gameState.fen}
-            onPieceDrop={onDrop}
-            onSquareClick={onSquareClick}
-            customSquareStyles={customSquareStyles}
-            boardWidth={480}
-            customDarkSquareStyle={{ backgroundColor: t.darkSquare }}
-            customLightSquareStyle={{ backgroundColor: t.lightSquare }}
-            areArrowsAllowed={true}
-          />
-        </div>
-
-        {/* ── Panneau droit ── */}
+        {/* Panneau Gauche */}
         <div
           style={{
             display: "flex",
@@ -347,7 +408,41 @@ export function Board() {
               </div>
             </div>
           </div>
+        </div>
 
+        {/* ── Plateau  Centrale── */}
+        <div
+          style={{
+            background: t.surface,
+            borderRadius: "12px",
+            padding: "7px",
+            border: `2px solid ${t.border}`,
+            boxShadow: "0 20px 60px rgba(181, 135, 99, 0.64)",
+          }}
+        >
+          <Chessboard
+            position={gameState.fen}
+            onPieceDrop={onDrop}
+            onSquareClick={onSquareClick}
+            customSquareStyles={customSquareStyles}
+            boardWidth={480}
+            customDarkSquareStyle={{ backgroundColor: t.darkSquare }}
+            customLightSquareStyle={{ backgroundColor: t.lightSquare }}
+            areArrowsAllowed={true}
+          />
+        </div>
+
+        {/* ── Panneau droit ── */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+            minWidth: "220px",
+            flex: 1,
+            maxWidth: "280px",
+          }}
+        >
           {/* Légende */}
           <div
             style={{
@@ -467,37 +562,14 @@ export function Board() {
               )}
             </div>
           </div>
-
-          {/* Bouton Nouvelle partie */}
-          <button
-            onClick={() => {
-              resetGame();
-              setLastMove(null);
-              setSelectedSquare(null);
-              setLegalSquares([]);
-            }}
-            style={{
-              background: t.button,
-              color: "#fff",
-              border: "none",
-              borderRadius: "10px",
-              padding: "14px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 700,
-              letterSpacing: "0.05em",
-              transition: "background 0.2s",
-              width: "100%",
-            }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.background = t.buttonHover)
-            }
-            onMouseOut={(e) => (e.currentTarget.style.background = t.button)}
-          >
-            ↺ Nouvelle partie
-          </button>
         </div>
       </div>
+      <PromotionModal
+        isOpen={promotionMove !== null}
+        color={promotionMove?.color ?? "w"}
+        onSelect={handlePromotion}
+        theme={t}
+      />
     </div>
   );
 }
