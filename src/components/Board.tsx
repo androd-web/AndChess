@@ -1,58 +1,17 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type CSSProperties, useEffect } from "react";
 import { Chessboard } from "react-chessboard";
-import type { Square } from "chess.js";
+import { Chess, type Square } from "chess.js";
+import { useSounds } from "../hooks/useSounds";
 import { useChessGame } from "../hooks/useChessGame";
-import { FaMoon, FaSun } from "react-icons/fa";
-import { GameControls } from "./GameControls";
-import { PromotionModal } from "./PromotionModal";
 import type { PromotionPiece } from "../types/chess.types";
-
-const THEMES = {
-  dark: {
-    bg: "#1a1a2e",
-    bgHeader: "#010f1e",
-    colorBorder: "black",
-    borderShadow: "#f0d9b5",
-    surface: "#16213e",
-    surface2: "#0f3460",
-    text: "#e2e8f0",
-    muted: "#94a3b8",
-    border: "#334155",
-    button: "#0f3460",
-    buttonHover: "#1e4d8c",
-    accent: "#e2b96f",
-    lightSquare: "#f0d9b5",
-    darkSquare: "#b58863",
-    lastMoveLight: "rgba(205, 210, 106, 0.5)",
-    lastMoveDark: "rgba(170, 162, 58, 0.5)",
-    selectedSquare: "rgba(20, 85, 30, 0.5)",
-    legalMove:
-      "radial-gradient(circle, rgba(20,85,30,0.5) 25%, transparent 25%)",
-    capture: "radial-gradient(circle, transparent 60%, rgba(20,85,30,0.5) 60%)",
-  },
-  light: {
-    bg: "#f0f4f8",
-    bgHeader: "#d3d4d5",
-    colorBorder: "#010f1e",
-    borderShadow: "#010f1e",
-    surface: "#ffffff",
-    surface2: "#e2e8f0",
-    text: "#1e293b",
-    muted: "#64748b",
-    border: "#cbd5e1",
-    button: "#3b82f6",
-    buttonHover: "#2563eb",
-    accent: "#e2b96f",
-    lightSquare: "#f0d9b5",
-    darkSquare: "#b58863",
-    lastMoveLight: "rgba(174, 176, 137, 0.6)",
-    lastMoveDark: "rgba(170, 162, 58, 0.6)",
-    selectedSquare: "rgba(20, 85, 30, 0.5)",
-    legalMove:
-      "radial-gradient(circle, rgba(20,85,30,0.5) 25%, transparent 25%)",
-    capture: "radial-gradient(circle, transparent 60%, rgba(20,85,30,0.5) 60%)",
-  },
-};
+import { PromotionModal } from "./PromotionModal";
+import { Header } from "./Header";
+import { LeftBoardPanel, RightBoardPanel } from "./BoardPanels";
+import { THEMES } from "../theme/boardTheme";
+import "../assets/styles/board.css";
+import { useStockfish } from '../hooks/useStockfish'
+import { DifficultySelector } from './DifficultySelector'
+import type { Difficulty } from '../types/chess.types'
 
 export function Board() {
   const { gameState, makeMove, resetGame, getLegalMoves } = useChessGame();
@@ -63,6 +22,14 @@ export function Board() {
     null,
   );
 
+  const { playMove, playIllegal, playCheck, isMuted, toggleMute } = useSounds();
+  // ── IA utilisation ───────────────────────────────────────────────────────────────────
+  const [isAIMode, setIsAIMode]     = useState<boolean>(true)
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
+  const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w')
+  const { getBestMove, bestMove, isThinking, isReady } = useStockfish()
+
+
   const [promotionMove, setPromotionMove] = useState<{
     from: Square;
     to: Square;
@@ -70,6 +37,94 @@ export function Board() {
   } | null>(null);
 
   const t = THEMES[theme ?? "dark"];
+  const isHumanTurn = !isAIMode || gameState.turn === playerColor;
+
+  const getMoveSound = useCallback(
+    (from: Square, to: Square, promotion: PromotionPiece | "q" = "q") => {
+      const simulation = new Chess(gameState.fen);
+      try {
+        const result = simulation.move({ from, to, promotion });
+        if (!result) return "illegal" as const;
+        return simulation.inCheck() ? ("check" as const) : ("move" as const);
+      } catch {
+        return "illegal" as const;
+      }
+    },
+    [gameState.fen],
+  );
+
+  // 3. Déclenche l'IA après chaque coup du joueur
+  useEffect(() => {
+    if (!isReady) return;
+    if (!isAIMode) return;
+    if (gameState.isGameOver) return;
+    if (gameState.turn === playerColor) return; // C'est le tour du joueur
+    getBestMove(gameState.fen, difficulty);
+  }, [
+    difficulty,
+    gameState.fen,
+    gameState.isGameOver,
+    gameState.turn,
+    getBestMove,
+    isAIMode,
+    isReady,
+    playerColor,
+  ]);
+
+  // 4. Joue le coup quand Stockfish répond
+  useEffect(() => {
+    if (!bestMove || bestMove === "(none)") return;
+    const from = bestMove.slice(0, 2) as Square;
+    const to = bestMove.slice(2, 4) as Square;
+    const promo = bestMove[4] as PromotionPiece | undefined;
+    makeMove({ from, to, promotion: promo ?? "q" });
+    setTimeout(() => setLastMove({ from, to }), 0);
+  }, [bestMove, makeMove]);
+  // Fonction pour trouver la case du roi en échec_______________________________________________________
+
+  function getKingSquare(): Square | null {
+    if (!gameState?.fen || !gameState.isCheck) return null;
+
+    const fenBoard = gameState.fen.split(" ")[0];
+    const rows = fenBoard.split("/");
+
+    if (rows.length !== 8) return null;
+
+    const kingChar = gameState.turn === "w" ? "K" : "k";
+    const files = "abcdefgh";
+
+    for (let rank = 0; rank < 8; rank++) {
+      const row = rows[rank];
+      if (!row) continue;
+
+      let fileIndex = 0;
+
+      for (const char of row) {
+        if (/\d/.test(char)) {
+          fileIndex += parseInt(char);
+        } else {
+          if (char === kingChar) {
+            return `${files[fileIndex]}${8 - rank}` as Square;
+          }
+          fileIndex++;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  const customSquareStyles: Record<string, CSSProperties> = {};
+
+  const kingSquare = getKingSquare();
+
+  if (kingSquare) {
+    customSquareStyles[kingSquare] = {
+      backgroundColor: t.check,
+      boxShadow: "inset 0 0 20px rgba(255,0,0,0.8)",
+    };
+  }
+
   // ── Drag & drop ──────────────────────────────────────────────────────────
 
   function onDrop(
@@ -77,6 +132,11 @@ export function Board() {
     targetSquare: string,
     piece: string,
   ): boolean {
+    if (!isHumanTurn || isThinking) {
+      playIllegal();
+      return false;
+    }
+
     // Vérifie que c'est un pion ET qu'il atteint la dernière rangée
     const isPawn = piece === "wP" || piece === "bP";
     const isPromotion =
@@ -98,6 +158,11 @@ export function Board() {
       to: targetSquare as Square,
       promotion: "q",
     });
+    const moveSound = getMoveSound(
+      sourceSquare as Square,
+      targetSquare as Square,
+      "q",
+    );
 
     if (success) {
       setLastMove({
@@ -106,9 +171,18 @@ export function Board() {
       });
       setSelectedSquare(null);
       setLegalSquares([]);
+      if (moveSound === "check") {
+        playCheck();
+      } else {
+        playMove();
+      }
+    }
+    if (!success) {
+      playIllegal();
+      return false;
     }
 
-    return success;
+    return true;
   }
 
   //  la fonction de sélection handlePromotion
@@ -120,12 +194,20 @@ export function Board() {
       to: promotionMove.to,
       promotion: piece,
     });
+    const moveSound = getMoveSound(promotionMove.from, promotionMove.to, piece);
 
     if (success) {
       setLastMove({
         from: promotionMove.from,
         to: promotionMove.to,
       });
+      if (moveSound === "check") {
+        playCheck();
+      } else {
+        playMove();
+      }
+    } else {
+      playIllegal();
     }
 
     setPromotionMove(null);
@@ -133,8 +215,11 @@ export function Board() {
   // ── Clic sur une case ─────────────────────────────────────────────────────
   const onSquareClick = useCallback(
     (square: Square) => {
+      if (!isHumanTurn || isThinking) {
+        return;
+      }
+
       if (selectedSquare && legalSquares.includes(square)) {
-        // ✔️ Détection simple promotion (FIABLE)
         const isPromotion =
           (gameState.turn === "w" &&
             selectedSquare[1] === "7" &&
@@ -155,15 +240,22 @@ export function Board() {
           return;
         }
 
-        // ✔️ coup normal
         const success = makeMove({
           from: selectedSquare,
           to: square,
           promotion: "q",
         });
+        const moveSound = getMoveSound(selectedSquare, square, "q");
 
         if (success) {
           setLastMove({ from: selectedSquare, to: square });
+          if (moveSound === "check") {
+            playCheck();
+          } else {
+            playMove();
+          }
+        } else {
+          playIllegal();
         }
 
         setSelectedSquare(null);
@@ -181,13 +273,23 @@ export function Board() {
         setLegalSquares([]);
       }
     },
-    [selectedSquare, legalSquares, makeMove, getLegalMoves, gameState.turn],
+    [
+      selectedSquare,
+      legalSquares,
+      makeMove,
+      getLegalMoves,
+      gameState.turn,
+      isHumanTurn,
+      isThinking,
+      getMoveSound,
+      playCheck,
+      playMove,
+      playIllegal,
+    ],
   );
 
   // ── Styles des cases ──────────────────────────────────────────────────────
-  const customSquareStyles: Record<string, React.CSSProperties> = {};
-
-  // Dernier coup joué — surbrillance jaune
+  // Dernier coup joué — surbrillance
   if (lastMove) {
     customSquareStyles[lastMove.from] = { backgroundColor: t.lastMoveLight };
     customSquareStyles[lastMove.to] = { backgroundColor: t.lastMoveDark };
@@ -200,7 +302,6 @@ export function Board() {
 
   // Coups légaux — point vert (case vide) ou anneau vert (capture)
   legalSquares.forEach((sq) => {
-    const isCapture = gameState.fen.includes(" "); // vérification simplifiée
     // Détecte si la case cible contient une pièce adverse
     const fenBoard = gameState.fen.split(" ")[0];
     const files = "abcdefgh";
@@ -223,6 +324,18 @@ export function Board() {
       : { background: t.legalMove };
   });
 
+  // roi en echec couleur
+  //  if (gameState.isCheck) {
+  //     const kingSquare = getKingSquare(gameState.turn)
+
+  //     if (kingSquare && typeof kingSquare === "string") {
+  //       customSquareStyles[kingSquare] = {
+  //         ...customSquareStyles[kingSquare],
+  //         backgroundColor: "red",
+  //       }
+  //     }
+  //  }
+
   // ── Statut de la partie ───────────────────────────────────────────────────
   const getStatus = (): { text: string; color: string } => {
     const { isCheckmate, isStalemate, isDraw, isCheck, turn } = gameState;
@@ -240,186 +353,89 @@ export function Board() {
   };
 
   const status = getStatus();
+  const panel3dStyle: CSSProperties = {
+    boxShadow: `0 8px 22px -14px ${t.borderShadow}, 0 14px 28px -24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)`,
+    backdropFilter: "blur(6px)",
+  };
 
-  // ── Rendu ─────────────────────────────────────────────────────────────────
+  const cssVars: CSSProperties = {
+    "--board-bg": t.bg,
+    "--board-header-bg": t.bgHeader,
+    "--board-color-border": t.colorBorder,
+    "--board-border-shadow": t.borderShadow,
+    "--board-surface": t.surface,
+    "--board-surface-2": t.surface2,
+    "--board-text": t.text,
+    "--board-muted": t.muted,
+    "--board-border": t.border,
+    "--board-accent": t.accent,
+  } as CSSProperties;
+
   return (
-    <div
-      style={{
-        minHeight: "100px",
-        background: t.bg,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "17px",
-        fontFamily: "'Segoe UI', sans-serif",
-        transition: "all 0.3s ease",
-      }}
-    >
-      {/* ── Header ── */}
-      <div
-        style={{
-          background: t.bgHeader,
-          width: "100%",
-          height: "50px",
-          maxWidth: "900px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "24px",
-          paddingRight: "15px",
-          paddingLeft: "15px",
-          paddingTop: "7px",
-          paddingBottom: "7px",
-          border: `2px solid ${t.colorBorder}`,
-          borderRadius: "7px",
-          boxShadow: `2px 3px 10px ${t.borderShadow}`,
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              color: t.accent,
-              fontSize: "26px",
-              fontWeight: 800,
-              margin: 0,
-              letterSpacing: "-0.5px",
-            }}
-          >
-            AndChess
-          </h1>
-        </div>
-        <GameControls
-          onReset={resetGame}
-          onResign={() => {}}
-          isGameOver={gameState.isGameOver}
-          theme={t}
-        />
-        {/* Bouton Dark / Light */}
+    <div className="board-page" style={cssVars}>
+      <Header
+        themeMode={theme}
+        theme={t}
+        isMuted={isMuted}
+        isGameOver={gameState.isGameOver}
+        onToggleTheme={() =>
+          setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+        }
+        onToggleMute={toggleMute}
+        onReset={resetGame}
+      />
+
+      <div className="board-card board-ai-controls" style={{ color: t.text }}>
         <button
-          onClick={() =>
-            setTheme((prev) => (prev === "dark" ? "light" : "dark"))
-          }
+          onClick={() => setIsAIMode((prev) => !prev)}
           style={{
             background: t.surface2,
             color: t.text,
             border: `1px solid ${t.border}`,
             borderRadius: "8px",
-            padding: "10px 20px",
+            padding: "8px 12px",
             cursor: "pointer",
-            fontSize: "14px",
             fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            transition: "all 0.2s",
           }}
         >
-          {theme === "dark" ? <FaSun /> : <FaMoon />}
-          {theme === "dark" ? " Light" : " Dark"}
+          {isAIMode ? "IA activée" : "IA désactivée"}
         </button>
-      </div>
 
-      {/* ── Contenu principal ── */}
-      <div
-        style={{
-          display: "flex",
-          gap: "24px",
-          alignItems: "center",
-          width: "100%",
-          height: "auto",
-          flexWrap: "wrap",
-          justifyContent: "center",
-        }}
-      >
-        {/* Panneau Gauche */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "16px",
-            minWidth: "220px",
-            flex: 1,
-            maxWidth: "280px",
-          }}
-        >
-          {/* Statut */}
-          <div
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ color: t.muted, fontSize: "12px" }}>Camp joueur:</span>
+          <button
+            onClick={() => setPlayerColor((prev) => (prev === "w" ? "b" : "w"))}
             style={{
-              background: t.surface,
+              background: t.surface2,
+              color: t.text,
               border: `1px solid ${t.border}`,
-              borderRadius: "10px",
-              padding: "16px 20px",
+              borderRadius: "8px",
+              padding: "8px 12px",
+              cursor: "pointer",
             }}
           >
-            <div
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: t.muted,
-                marginBottom: "8px",
-              }}
-            >
-              Statut
-            </div>
-            <div
-              style={{ fontSize: "15px", fontWeight: 600, color: status.color }}
-            >
-              {status.text}
-            </div>
-          </div>
-
-          {/* Indicateur de tour */}
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: "10px",
-              padding: "16px 20px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-            }}
-          >
-            <div
-              style={{
-                width: "28px",
-                height: "28px",
-                borderRadius: "50%",
-                background: gameState.turn === "w" ? "#f5f5f5" : "#1a1a1a",
-                border: "2px solid " + t.border,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-              }}
-            />
-            <div>
-              <div
-                style={{
-                  fontSize: "10px",
-                  color: t.muted,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                }}
-              >
-                Au tour de
-              </div>
-              <div style={{ fontSize: "14px", fontWeight: 700, color: t.text }}>
-                {gameState.turn === "w" ? "Blancs" : "Noirs"}
-              </div>
-            </div>
-          </div>
+            {playerColor === "w" ? "Blancs" : "Noirs"}
+          </button>
         </div>
 
+        <DifficultySelector
+          value={difficulty}
+          onChange={setDifficulty}
+          disabled={!isAIMode || isThinking}
+          theme={t}
+        />
+      </div>
+
+      <div className="board-layout">
+
+        <LeftBoardPanel
+          status={status}
+          turn={gameState.turn}
+          panelStyle={panel3dStyle}
+        />
+
         {/* ── Plateau  Centrale── */}
-        <div
-          style={{
-            background: t.surface,
-            borderRadius: "12px",
-            padding: "7px",
-            border: `2px solid ${t.border}`,
-            boxShadow: "0 20px 60px rgba(181, 135, 99, 0.64)",
-          }}
-        >
+        <div className="board-wrapper">
           <Chessboard
             position={gameState.fen}
             onPieceDrop={onDrop}
@@ -432,137 +448,11 @@ export function Board() {
           />
         </div>
 
-        {/* ── Panneau droit ── */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "16px",
-            minWidth: "220px",
-            flex: 1,
-            maxWidth: "280px",
-          }}
-        >
-          {/* Légende */}
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: "10px",
-              padding: "16px 20px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: t.muted,
-                marginBottom: "12px",
-              }}
-            >
-              Légende
-            </div>
-            {[
-              { color: "rgba(20,85,30,0.6)", label: "· Coup possible" },
-              { color: "rgba(205,210,106,0.7)", label: "□ Dernier coup" },
-              { color: "rgba(20,85,30,0.5)", label: "○ Capture possible" },
-            ].map((item, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  marginBottom: "8px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "18px",
-                    height: "18px",
-                    background: item.color,
-                    borderRadius: "3px",
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: "12px", color: t.text }}>
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Historique des coups */}
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: "10px",
-              padding: "16px 20px",
-              flex: 1,
-            }}
-          >
-            <div
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: t.muted,
-                marginBottom: "12px",
-              }}
-            >
-              Historique
-            </div>
-            <div
-              style={{
-                maxHeight: "180px",
-                overflowY: "auto",
-                display: "grid",
-                gridTemplateColumns: "24px 1fr 1fr",
-                gap: "4px",
-                fontSize: "13px",
-              }}
-            >
-              {gameState.history.length === 0 && (
-                <span
-                  style={{
-                    color: t.muted,
-                    fontSize: "12px",
-                    gridColumn: "1 / -1",
-                  }}
-                >
-                  Aucun coup joué
-                </span>
-              )}
-              {gameState.history.map(
-                (move, i) =>
-                  i % 2 === 0 && (
-                    <>
-                      <span
-                        key={`n${i}`}
-                        style={{ color: t.muted, fontSize: "11px" }}
-                      >
-                        {Math.floor(i / 2) + 1}.
-                      </span>
-                      <span
-                        key={`w${i}`}
-                        style={{ color: t.text, fontWeight: 500 }}
-                      >
-                        {move}
-                      </span>
-                      <span
-                        key={`b${i}`}
-                        style={{ color: t.text, fontWeight: 500 }}
-                      >
-                        {gameState.history[i + 1] ?? ""}
-                      </span>
-                    </>
-                  ),
-              )}
-            </div>
-          </div>
-        </div>
+        <RightBoardPanel
+          theme={t}
+          history={gameState.history}
+          panelStyle={panel3dStyle}
+        />
       </div>
       <PromotionModal
         isOpen={promotionMove !== null}
