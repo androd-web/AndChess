@@ -9,6 +9,7 @@ interface UseChessGameReturn {
   makeMove:  (move: MoveData) => boolean
   resetGame: () => void
   getLegalMoves: (square: Square) => Square[]
+  updateFen: (fen: string) => void
 }
 
 export function useChessGame(): UseChessGameReturn {
@@ -28,6 +29,15 @@ export function useChessGame(): UseChessGameReturn {
     }
     return false
   }, [game])
+
+  // Met à jour la position depuis une FEN externe (ex: socket)
+  const updateFen = useCallback((fen: string) => {
+    try {
+      setGame(new Chess(fen))
+    } catch (e) {
+      console.error("Invalid FEN provided to updateFen", e)
+    }
+  }, [])
 
   // Retourne les cases cibles légales depuis une case donnée
   const getLegalMoves = useCallback((square: Square): Square[] => {
@@ -49,5 +59,5 @@ export function useChessGame(): UseChessGameReturn {
     history:     game.history(),
   }
 
-  return { gameState, makeMove, resetGame, getLegalMoves }
+  return { gameState, makeMove, resetGame, getLegalMoves, updateFen }
 }

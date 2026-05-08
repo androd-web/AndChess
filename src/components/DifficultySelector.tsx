@@ -1,6 +1,7 @@
 import type { FC } from 'react'
 import type { Difficulty } from '../types/chess.types'
 import type { BoardTheme } from "../theme/boardTheme";
+import { FaLeaf, FaChessKnight, FaChessQueen } from "react-icons/fa";
 
 interface DifficultySelectorProps {
   value:    Difficulty
@@ -9,10 +10,10 @@ interface DifficultySelectorProps {
   theme:    BoardTheme
 }
 
-const levels: { value: Difficulty; label: string; icon: string }[] = [
-  { value: 'easy',   label: 'Facile',   icon: '🟢' },
-  { value: 'medium', label: 'Moyen',    icon: '🟡' },
-  { value: 'hard',   label: 'Difficile', icon: '🔴' },
+const levels: { value: Difficulty; label: string; icon: FC<{ size?: number }> }[] = [
+  { value: 'easy',   label: 'Facile',    icon: FaLeaf },
+  { value: 'medium', label: 'Moyen',     icon: FaChessKnight },
+  { value: 'hard',   label: 'Difficile', icon: FaChessQueen },
 ]
 
 export const DifficultySelector: FC<DifficultySelectorProps> = ({
@@ -41,8 +42,74 @@ export const DifficultySelector: FC<DifficultySelectorProps> = ({
           transition: 'all 0.15s',
         }}
       >
-        {lvl.icon} {lvl.label}
+        <lvl.icon size={13} /> {lvl.label}
       </button>
     ))}
   </div>
 )
+
+
+
+
+
+
+
+
+
+// import type { BoardTheme } from "../theme/boardTheme";
+// import type { Difficulty } from "../types/chess.types";
+// import { FaLeaf, FaChessKnight, FaChessQueen } from "react-icons/fa";
+
+
+// interface DifficultySelectorProps {
+//   value:    Difficulty;
+//   onChange: (d: Difficulty) => void;
+//   disabled: boolean;
+//   theme:    BoardTheme;
+// }
+
+// const levels: { value: Difficulty; label: string; icon: FC<{ size?: number }> }[] = [
+//   { value: 'easy',   label: 'Facile',    icon: FaLeaf },
+//   { value: 'medium', label: 'Moyen',     icon: FaChessKnight },
+//   { value: 'hard',   label: 'Difficile', icon: FaChessQueen },
+// ]
+
+// export function DifficultySelector({
+//   value,
+//   onChange,
+//   disabled,
+//   theme: t,
+// }: DifficultySelectorProps) {
+//   return (
+//     <div style={{ display: "flex", gap: "6px" }}>
+//       {levels.map((lvl) => (
+//         <button
+//           key={lvl.value}
+//           onClick={() => !disabled && onChange(lvl.value)}
+//           disabled={disabled}
+//           style={{
+//             padding: "8px 14px",
+//             borderRadius: "8px",
+//             border: value === lvl.value
+//               ? `1px solid ${t.accent}`
+//               : `1px solid ${t.border}`,
+//             background: value === lvl.value
+//               ? `rgba(104,245,255,0.12)`
+//               : t.surface,
+//             color: value === lvl.value ? t.accent : t.muted,
+//             cursor: disabled ? "not-allowed" : "pointer",
+//             fontSize: "13px",
+//             fontWeight: 600,
+//             display: "flex",
+//             alignItems: "center",
+//             gap: "6px",
+//             opacity: disabled ? 0.5 : 1,
+//             transition: "all 0.15s",
+//           }}
+//         >
+//           {lvl.icon} {lvl.label}
+//         </button>
+//       ))}
+//     </div>
+//   );
+// }

@@ -1,15 +1,16 @@
-import { FaMoon, FaSun, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
+ import { FaMoon, FaSun, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 import type { BoardTheme } from "../theme/boardTheme";
 import { GameControls } from "./GameControls";
 
 interface HeaderProps {
-  themeMode: "dark" | "light";
-  theme: BoardTheme;
-  isMuted: boolean;
-  isGameOver: boolean;
+  themeMode:     "dark" | "light";
+  theme:         BoardTheme;
+  isMuted:       boolean;
+  isGameOver:    boolean;
   onToggleTheme: () => void;
-  onToggleMute: () => void;
-  onReset: () => void;
+  onToggleMute:  () => void;
+  onReset:       () => void;
+  onBackToMenu:  () => void;   // ← nouveau
 }
 
 export function Header({
@@ -20,18 +21,33 @@ export function Header({
   onToggleTheme,
   onToggleMute,
   onReset,
+  onBackToMenu,
 }: HeaderProps) {
   return (
     <header className="board-header">
-      <h1 className="board-title">AndChess</h1>
 
+      {/* Logo + bouton retour menu */}
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <button
+          onClick={onBackToMenu}
+          title="Retour au menu"
+          className="header-icon-button"
+          style={{ fontSize: "13px", gap: "5px", display: "flex", alignItems: "center" }}
+        >
+          ← Menu
+        </button>
+        <h1 className="board-title">AndChess</h1>
+      </div>
+
+      {/* Contrôles (Nouvelle partie + Abandonner) */}
       <GameControls
         onReset={onReset}
-        onResign={() => {}}
+        onResign={onBackToMenu}   // Abandonner → retour menu
         isGameOver={isGameOver}
         theme={theme}
       />
 
+      {/* Son */}
       <button
         onClick={onToggleMute}
         title={isMuted ? "Activer le son" : "Couper le son"}
@@ -40,6 +56,7 @@ export function Header({
         {isMuted ? <FaVolumeMute color="#ef4444" /> : <FaVolumeUp />}
       </button>
 
+      {/* Thème Dark / Light */}
       <button
         onClick={onToggleTheme}
         translate="no"
@@ -49,6 +66,7 @@ export function Header({
         {themeMode === "dark" ? <FaSun /> : <FaMoon />}
         <span translate="no">{themeMode === "dark" ? " Light" : " Dark"}</span>
       </button>
+
     </header>
   );
 }

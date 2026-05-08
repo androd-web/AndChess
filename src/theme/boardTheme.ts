@@ -71,3 +71,4 @@ export const THEMES: Record<"dark" | "light", BoardTheme> = {
     check: "rgba(255,0,0,0.6)",
   },
 };
+ 

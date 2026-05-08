@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+ import type { CSSProperties } from "react";
 import type { BoardTheme } from "../theme/boardTheme";
 
 interface StatusInfo {
@@ -41,19 +41,15 @@ export function LeftBoardPanel({ status, turn, panelStyle }: LeftPanelProps) {
   );
 }
 
-export function RightBoardPanel({
-  theme,
-  history,
-  panelStyle,
-}: RightPanelProps) {
+export function RightBoardPanel({ theme, history, panelStyle }: RightPanelProps) {
   return (
     <div className="board-side-panel">
       <div className="board-card" style={panelStyle}>
         <div className="board-card-title board-spaced-title">Légende</div>
         {[
-          { color: theme.legalMove, label: "<=> Coup possible" },
-          { color: theme.lastMoveLight, label: "<=> Dernier coup" },
-          { color: theme.capture, label: "<=> Capture possible" },
+          { color: theme.legalMove,     label: "· Coup possible" },
+          { color: theme.lastMoveLight, label: "□ Dernier coup" },
+          { color: theme.capture,       label: "○ Capture possible" },
         ].map((item, i) => (
           <div key={i} className="board-legend-item">
             <div className="board-legend-color" style={{ background: item.color }} />

@@ -1,5 +1,6 @@
 import type { FC } from "react"
-
+import { FaFlagCheckered, } from "react-icons/fa";
+import { IoMdRefresh } from "react-icons/io";
 interface GameControlsProps {
   onReset: () => void
   onResign: () => void
@@ -22,8 +23,7 @@ export const GameControls: FC<GameControlsProps> = ({
 }) => {
   return (
     <div style={{
-      display: "flex",
-      // flexDirection: "column",
+      display: "flex", 
       gap: "10px",
       width: "50%",
       height: "80%"
@@ -54,7 +54,7 @@ export const GameControls: FC<GameControlsProps> = ({
         onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
         onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
       >
-        ↺ Nouvelle partie
+        <IoMdRefresh size={20}/>  Nouvelle partie
       </button>
 
       {/* Bouton Abandonner — désactivé si partie terminée */}
@@ -90,7 +90,7 @@ export const GameControls: FC<GameControlsProps> = ({
           }
         }}
       >
-        🏳 Abandonner
+        <FaFlagCheckered /> Abandonner
       </button>
 
     </div>

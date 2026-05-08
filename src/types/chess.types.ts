@@ -32,7 +32,7 @@ export interface DifficultyConfig {
 
 // Config par niveau
 export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
-  easy:   { label: 'Facile',   skillLevel: 2,  moveTime: 500,  depth: 5  },
-  medium: { label: 'Moyen',    skillLevel: 10, moveTime: 1000, depth: 10 },
-  hard:   { label: 'Difficile', skillLevel: 20, moveTime: 2000, depth: 18 },
+  easy:   { label: 'Facile',   skillLevel: 2,  moveTime: 3000,  depth: 5  },
+  medium: { label: 'Moyen',    skillLevel: 10, moveTime: 3000, depth: 10 },
+  hard:   { label: 'Difficile', skillLevel: 20, moveTime: 3000, depth: 18 },
 }
