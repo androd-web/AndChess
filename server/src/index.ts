@@ -119,4 +119,5 @@ setInterval(() => {
   rooms.cleanOldRooms()
 }, 60 * 60 * 1000)
 
-httpServer.listen(3001, () => console.log('Serveur sur le port 3001'))
+const PORT = process.env.PORT || 3001
+httpServer.listen(PORT, () => console.log(`Serveur sur le port ${PORT}`))

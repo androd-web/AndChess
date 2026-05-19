@@ -17,7 +17,7 @@ export function useChessGame(): UseChessGameReturn {
   const [game, setGame] = useState<Chess>(() => new Chess())
 
   const getPiece = useCallback((square: Square) => {
-    return game.get(square)
+    return game.get(square) || null
   }, [game])
 
   // Tente de jouer un coup. Retourne true si légal et joué.
