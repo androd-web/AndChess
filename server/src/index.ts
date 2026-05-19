@@ -7,13 +7,23 @@ import { RoomManager } from './roomManager'
 
 const app        = express()
 const httpServer = createServer(app)
+
+const allowedOrigin = process.env.FRONTEND_URL || '*'
+
 const io         = new Server(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: { 
+    origin: allowedOrigin, 
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
 })
 
 const rooms = new RoomManager()
 
-app.use(cors())
+app.use(cors({
+  origin: allowedOrigin,
+  credentials: true
+}))
 app.use(express.json())
 
 // Route REST — vérifie si une salle existe
