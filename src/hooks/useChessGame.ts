@@ -10,10 +10,15 @@ interface UseChessGameReturn {
   resetGame: () => void
   getLegalMoves: (square: Square) => Square[]
   updateFen: (fen: string) => void
+  getPiece: (square: Square) => { type: string, color: string } | null
 }
 
 export function useChessGame(): UseChessGameReturn {
   const [game, setGame] = useState<Chess>(() => new Chess())
+
+  const getPiece = useCallback((square: Square) => {
+    return game.get(square)
+  }, [game])
 
   // Tente de jouer un coup. Retourne true si légal et joué.
   const makeMove = useCallback((move: MoveData): boolean => {
@@ -59,5 +64,5 @@ export function useChessGame(): UseChessGameReturn {
     history:     game.history(),
   }
 
-  return { gameState, makeMove, resetGame, getLegalMoves, updateFen }
+  return { gameState, makeMove, resetGame, getLegalMoves, updateFen, getPiece }
 }

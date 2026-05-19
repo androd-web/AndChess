@@ -11,7 +11,8 @@ import { THEMES } from "../theme/boardTheme";
 import "../assets/styles/board.css";
 import { useStockfish } from "../hooks/useStockfish";
 import { DifficultySelector } from "./DifficultySelector";
-import type { Difficulty } from "../types/chess.types";
+import type { Difficulty, DifficultyConfig } from "../types/chess.types";
+import { DIFFICULTY_CONFIG } from "../types/chess.types";
 import { type UseSocketReturn } from "../hooks/useSocket";
 import { GameOverModal } from "./GameOverModal";
 import { useTheme } from "../hooks/useTheme";
@@ -44,7 +45,8 @@ export function Board({
   const effectiveDarkSquare = boardConfig.darkSquare;
 
   // ── État jeu ──────────────────────────────────────────────────────────────
-  const { gameState, makeMove, resetGame, getLegalMoves, updateFen } = useChessGame();
+  const { gameState, makeMove, resetGame, getLegalMoves, updateFen, getPiece } =
+    useChessGame();
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalSquares, setLegalSquares] = useState<Square[]>([]);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(
@@ -75,16 +77,40 @@ export function Board({
   const socketRoomId = socket?.roomId;
   const socketPlayerColor = socket?.playerColor;
   const sendMove = socket?.sendMove;
+  const socketGameOver = socket?.gameOver;
 
   // En mode multijoueur, on utilise le roomId du socket ou celui passé en prop
   const activeRoomId = socketRoomId ?? roomIdProp ?? null;
   const activeColor = isAIMode ? playerColor : (socketPlayerColor ?? "w");
   const canPlayAgainstAI = !isAIMode || isAIGameStarted;
-  const isHumanTurn = !isAIMode
-    ? gameState.turn === activeColor
-    : isAIGameStarted && gameState.turn === playerColor;
+  const isHumanTurn = gameState.turn === activeColor;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  const handleReset = useCallback(() => {
+    if (isAIMode) {
+      resetGame();
+      setIsAIGameStarted(false);
+      setIsResigned(false);
+    } else {
+      socket?.requestRematch();
+    }
+  }, [isAIMode, resetGame, socket]);
+
+  const handleResign = useCallback(() => {
+    if (isAIMode) {
+      setIsResigned(true);
+    } else {
+      socket?.resign();
+    }
+  }, [isAIMode, socket]);
+
+  const handleBackToMenu = useCallback(() => {
+    if (!isAIMode) {
+      socket?.leaveRoom();
+    }
+    onBackToMenu();
+  }, [isAIMode, onBackToMenu, socket]);
 
   const getMoveSound = useCallback(
     (from: Square, to: Square, promotion: PromotionPiece | "q" = "q") => {
@@ -118,6 +144,17 @@ export function Board({
     }
   }, [socketLastMove, updateFen, playCheck, playMove, gameState.fen]);
 
+  // Rematch (mode multijoueur)
+  useEffect(() => {
+    if (socket?.rematchStarted && socket.rematchStarted.fen !== gameState.fen) {
+      updateFen(socket.rematchStarted.fen);
+      setTimeout(() => {
+        setLastMove(null);
+        setIsResigned(false);
+      }, 0);
+    }
+  }, [socket?.rematchStarted, updateFen, gameState.fen]);
+
   // IA — déclenche getBestMove après chaque coup du joueur
   useEffect(() => {
     if (!canPlayAgainstAI || !isReady || !isAIMode) return;
@@ -139,19 +176,28 @@ export function Board({
   // IA — joue le coup quand Stockfish répond
   useEffect(() => {
     if (!bestMove || bestMove === "(none)") return;
-    const from = bestMove.slice(0, 2) as Square;
-    const to = bestMove.slice(2, 4) as Square;
-    const promo = bestMove[4] as PromotionPiece | undefined;
     
-    const moveSound = getMoveSound(from, to, promo ?? "q");
-    const success = makeMove({ from, to, promotion: promo ?? "q" });
+    // On récupère la config pour le délai (ex: 3000ms)
+    // On peut utiliser une fraction de ce temps ou un délai fixe basé sur la difficulté
+    const config: DifficultyConfig = DIFFICULTY_CONFIG[difficulty];
     
-    if (success) {
-      setTimeout(() => setLastMove({ from, to }), 0);
-      if (moveSound === "check") playCheck();
-      else playMove();
-    }
-  }, [bestMove, makeMove, playCheck, playMove, getMoveSound]);
+    const timer = setTimeout(() => {
+      const from = bestMove.slice(0, 2) as Square;
+      const to = bestMove.slice(2, 4) as Square;
+      const promo = bestMove[4] as PromotionPiece | undefined;
+      
+      const moveSound = getMoveSound(from, to, promo ?? "q");
+      const success = makeMove({ from, to, promotion: promo ?? "q" });
+      
+      if (success) {
+        setTimeout(() => setLastMove({ from, to }), 0);
+        if (moveSound === "check") playCheck();
+        else playMove();
+      }
+    }, config.moveTime > 1000 ? 1000 : 500); // On plafonne le délai visuel pour ne pas être trop lent, tout en respectant l'idée de config
+
+    return () => clearTimeout(timer);
+  }, [bestMove, makeMove, playCheck, playMove, getMoveSound, difficulty]);
 
   // Trouve la case du roi en échec
   function getKingSquare(): Square | null {
@@ -310,13 +356,16 @@ export function Board({
       if (!isHumanTurn || isThinking) return;
 
       if (selectedSquare && legalSquares.includes(square)) {
+        const piece = getPiece(selectedSquare);
+        const isPawn = piece?.type === "p";
         const isPromotion =
-          (gameState.turn === "w" &&
+          isPawn &&
+          ((gameState.turn === "w" &&
             selectedSquare[1] === "7" &&
             square[1] === "8") ||
-          (gameState.turn === "b" &&
-            selectedSquare[1] === "2" &&
-            square[1] === "1");
+            (gameState.turn === "b" &&
+              selectedSquare[1] === "2" &&
+              square[1] === "1"));
 
         if (isPromotion) {
           setPromotionMove({
@@ -369,6 +418,7 @@ export function Board({
       legalSquares,
       makeMove,
       getLegalMoves,
+      getPiece,
       gameState.turn,
       isHumanTurn,
       isThinking,
@@ -384,6 +434,18 @@ export function Board({
   // ── Statut ────────────────────────────────────────────────────────────────
   const getStatus = (): { text: string; color: string } => {
     const { isCheckmate, isStalemate, isDraw, isCheck, turn } = gameState;
+
+    if (!isAIMode && socket?.opponentLeft) {
+      return { text: "L'adversaire a quitté la partie", color: "#ef4444" };
+    }
+
+    if (!isAIMode && socketGameOver) {
+      if (socketGameOver.reason === "resign") {
+        return { text: "Partie terminée par abandon", color: "#ef4444" };
+      }
+      return { text: "Partie terminée", color: "#ef4444" };
+    }
+
     const player = turn === "w" ? "Blancs" : "Noirs";
     if (isCheckmate)
       return {
@@ -425,35 +487,86 @@ export function Board({
         themeMode={theme}
         theme={t}
         isMuted={isMuted}
-        isGameOver={gameState.isGameOver}
+        isGameOver={isAIMode ? gameState.isGameOver : !!socketGameOver}
         onToggleTheme={toggleAppTheme}
         onToggleMute={toggleMute}
-        onReset={() => {
-          resetGame();
-          setIsAIGameStarted(false);
-          setIsResigned(false);
-        }}
-        onBackToMenu={onBackToMenu}
+        onReset={handleReset}
+        onBackToMenu={handleBackToMenu}
+        onResign={handleResign}
       />
+
+      {/* Notification Rematch */}
+      {!isAIMode && socket?.rematchRequested && (
+        <div
+          className="board-card"
+          style={{
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            borderColor: t.accent,
+            background: "rgba(56,189,248,0.1)",
+            padding: "12px 20px",
+            borderRadius: "12px",
+            border: `1px solid ${t.accent}`,
+            zIndex: 10,
+          }}
+        >
+          <span style={{ fontWeight: 600, color: t.text }}>
+            L'adversaire demande une revanche !
+          </span>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={() => socket.acceptRematch()}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                background: t.accent,
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Accepter
+            </button>
+            <button
+              onClick={() => socket.declineRematch()}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                background: "transparent",
+                color: "#ef4444",
+                border: "1px solid #ef4444",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Refuser
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isAIMode && socket?.rematchDeclined && (
+        <div
+          className="board-card"
+          style={{
+            marginBottom: "16px",
+            borderColor: "#ef4444",
+            background: "rgba(239,68,68,0.1)",
+            padding: "12px 20px",
+            borderRadius: "12px",
+            border: "1px solid #ef4444",
+          }}
+        >
+          <span style={{ color: t.text }}>L'adversaire a refusé la revanche.</span>
+        </div>
+      )}
 
       {/* Barre IA (seulement si mode IA) */}
       {isAIMode && (
         <div className="board-card board-ai-controls" style={{ color: t.text }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ color: t.muted, fontSize: "12px" }}>Camp :</span>
-            <span
-              style={{
-                background: t.surface2,
-                color: t.text,
-                border: `1px solid ${t.border}`,
-                borderRadius: "8px",
-                padding: "8px 12px",
-              }}
-            >
-              {playerColor === "w" ? "Blancs" : "Noirs"}
-            </span>
-          </div>
-
           <DifficultySelector
             value={difficulty}
             onChange={(value) => {
@@ -489,6 +602,7 @@ export function Board({
           status={status}
           turn={gameState.turn}
           panelStyle={panel3dStyle}
+          playerColor={activeColor}
         />
 
         <div className="board-wrapper">
@@ -498,6 +612,7 @@ export function Board({
             onSquareClick={onSquareClick}
             customSquareStyles={customSquareStyles}
             boardWidth={480}
+            boardOrientation={activeColor === "w" ? "white" : "black"}
             customDarkSquareStyle={{ backgroundColor: effectiveDarkSquare }}
             customLightSquareStyle={{ backgroundColor: effectiveLightSquare }}
             areArrowsAllowed={true}
@@ -521,24 +636,34 @@ export function Board({
 
       {/* Modal fin de partie */}
       <GameOverModal
-        isOpen={gameState.isGameOver || isResigned}
-        type={
-          isResigned
-            ? "resign"
-            : gameState.isCheckmate
-              ? gameState.turn !== playerColor
-                ? "win"
-                : "lose"
-              : "draw"
+        isOpen={
+          (isAIMode ? gameState.isGameOver : !!socketGameOver) || isResigned
         }
+        type={(() => {
+          if (isResigned) return "lose";
+          if (isAIMode) {
+            if (gameState.isCheckmate) return gameState.turn !== playerColor ? "win" : "lose";
+            return "draw";
+          }
+          if (socketGameOver) {
+            if (socketGameOver.winner === "draw") return "draw";
+            const winColor = socketGameOver.winner === "white" ? "w" : "b";
+            return winColor === activeColor ? "win" : "lose";
+          }
+          return "draw";
+        })()}
         reason={
-          gameState.isCheckmate
-            ? `${gameState.turn !== playerColor ? "Tu as gagné" : "L'IA a gagné"} par échec et mat !`
-            : gameState.isStalemate
-              ? "Pat — aucun coup légal possible."
-              : undefined
+          isResigned || socketGameOver?.reason === "resign"
+            ? "Partie terminée par abandon."
+            : gameState.isCheckmate
+              ? isAIMode
+                ? `${gameState.turn !== playerColor ? "Tu as gagné" : "L'IA a gagné"} par échec et mat !`
+                : `${gameState.turn !== activeColor ? "Tu as gagné" : "L'adversaire a gagné"} par échec et mat !`
+              : gameState.isStalemate
+                ? "Pat — aucun coup légal possible."
+                : undefined
         }
-        onReplay={onBackToMenu}
+        onReplay={handleReset}
       />
     </div>
   );

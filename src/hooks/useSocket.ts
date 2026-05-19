@@ -26,10 +26,17 @@ export interface UseSocketReturn {
   opponentLeft: boolean;
   lastMove: MoveReceived | null;
   gameOver: { reason: string; winner: string } | null;
+  rematchRequested: boolean;
+  rematchStarted: { fen: string } | null;
+  rematchDeclined: boolean;
   createRoom: () => void;
   joinRoom: (id: string) => void;
   sendMove: (payload: MovePayload) => void;
   resign: () => void;
+  requestRematch: () => void;
+  acceptRematch: () => void;
+  declineRematch: () => void;
+  leaveRoom: () => void;
 }
 
 export function useSocket(): UseSocketReturn {
@@ -44,6 +51,20 @@ export function useSocket(): UseSocketReturn {
   const [opponentLeft, setOpponentLeft] = useState(false);
   const [lastMove, setLastMoveNet] = useState<MoveReceived | null>(null);
   const [gameOver, setGameOver] = useState<{ reason: string; winner: string } | null>(null);
+  const [rematchRequested, setRematchRequested] = useState(false);
+  const [rematchStarted, setRematchStarted] = useState<{ fen: string } | null>(null);
+  const [rematchDeclined, setRematchDeclined] = useState(false);
+
+  // Helper pour réinitialiser tout l'état lié à une partie
+  const resetSocketState = useCallback(() => {
+    setGameStarted(false);
+    setOpponentLeft(false);
+    setLastMoveNet(null);
+    setGameOver(null);
+    setRematchRequested(false);
+    setRematchStarted(null);
+    setRematchDeclined(false);
+  }, []);
 
   useEffect(() => {
     // FIX 2 & 3 : suppression de `socket = socket` (auto-affectation sur const).
@@ -55,27 +76,42 @@ export function useSocket(): UseSocketReturn {
     socket.on("disconnect", () => setIsConnected(false));
 
     socket.on("room_created", ({ roomId, color }: { roomId: string; color: "w" | "b" }) => {
+      resetSocketState();
       setRoomId(roomId);
       setPlayerColor(color);
     });
 
     socket.on("room_joined", ({ color, roomId: rId }: { color: "w" | "b", roomId?: string }) => {
+      resetSocketState();
       setPlayerColor(color);
       if (rId) setRoomId(rId);
     });
     socket.on("game_start", ({ roomId: rId }: { roomId: string }) => {
       setGameStarted(true);
       if (rId) setRoomId(rId);
+      setGameOver(null);
     });
     socket.on("move_made", (data: MoveReceived) => setLastMoveNet(data));
     socket.on("player_disconnected", () => setOpponentLeft(true));
     socket.on("game_over", (data: { reason: string; winner: string }) => setGameOver(data));
 
+    socket.on("rematch_requested", () => setRematchRequested(true));
+    socket.on("rematch_started", (data) => {
+      setRematchStarted(data);
+      setGameOver(null);
+      setRematchRequested(false);
+      setRematchDeclined(false);
+    });
+    socket.on("rematch_declined", () => {
+      setRematchRequested(false);
+      setRematchDeclined(true);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []);
+  }, [resetSocketState]);
 
   // FIX 4 : les useCallback utilisent socketRef.current au lieu de `socket`
   // (qui n'existe pas dans leur portée). socketRef est stable entre les rendus,
@@ -85,9 +121,10 @@ export function useSocket(): UseSocketReturn {
   }, []);
 
   const joinRoom = useCallback((id: string) => {
+    resetSocketState();
     setRoomId(id);
     socketRef.current?.emit("join_room", { roomId: id });
-  }, []);
+  }, [resetSocketState]);
 
   const sendMove = useCallback((payload: MovePayload) => {
     socketRef.current?.emit("make_move", payload);
@@ -97,6 +134,26 @@ export function useSocket(): UseSocketReturn {
     socketRef.current?.emit("player_resigned", { roomId });
   }, [roomId]);
 
+  const requestRematch = useCallback(() => {
+    setRematchDeclined(false);
+    socketRef.current?.emit("rematch_request", { roomId });
+  }, [roomId]);
+
+  const acceptRematch = useCallback(() => {
+    socketRef.current?.emit("rematch_accept", { roomId });
+  }, [roomId]);
+
+  const declineRematch = useCallback(() => {
+    setRematchRequested(false);
+    socketRef.current?.emit("rematch_decline", { roomId });
+  }, [roomId]);
+
+  const leaveRoom = useCallback(() => {
+    socketRef.current?.emit("leave_room", { roomId });
+    setRoomId(null);
+    resetSocketState();
+  }, [roomId, resetSocketState]);
+
   return {
     roomId,
     playerColor,
@@ -105,9 +162,16 @@ export function useSocket(): UseSocketReturn {
     opponentLeft,
     lastMove,
     gameOver,
+    rematchRequested,
+    rematchStarted,
+    rematchDeclined,
     createRoom,
     joinRoom,
     sendMove,
     resign,
+    requestRematch,
+    acceptRematch,
+    declineRematch,
+    leaveRoom,
   };
 }

@@ -10,6 +10,7 @@ interface LeftPanelProps {
   status: StatusInfo;
   turn: "w" | "b";
   panelStyle: CSSProperties;
+  playerColor?: "w" | "b";
 }
 
 interface RightPanelProps {
@@ -18,9 +19,21 @@ interface RightPanelProps {
   panelStyle: CSSProperties;
 }
 
-export function LeftBoardPanel({ status, turn, panelStyle }: LeftPanelProps) {
+export function LeftBoardPanel({ status, turn, panelStyle, playerColor }: LeftPanelProps) {
   return (
     <div className="board-side-panel">
+      {playerColor && (
+        <div className="board-card board-turn-card" style={panelStyle}>
+          <div
+            className={`board-turn-dot ${playerColor === "w" ? "board-turn-white" : "board-turn-black"}`}
+          />
+          <div>
+            <div className="board-card-subtitle">Vous jouez les</div>
+            <div className="board-turn-text">{playerColor === "w" ? "Blancs" : "Noirs"}</div>
+          </div>
+        </div>
+      )}
+
       <div className="board-card" style={panelStyle}>
         <div className="board-card-title">Statut</div>
         <div className="board-status-text" style={{ color: status.color }}>

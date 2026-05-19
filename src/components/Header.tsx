@@ -10,7 +10,8 @@ interface HeaderProps {
   onToggleTheme: () => void;
   onToggleMute:  () => void;
   onReset:       () => void;
-  onBackToMenu:  () => void;   // ← nouveau
+  onBackToMenu:  () => void;
+  onResign:      () => void;
 }
 
 export function Header({
@@ -22,6 +23,7 @@ export function Header({
   onToggleMute,
   onReset,
   onBackToMenu,
+  onResign,
 }: HeaderProps) {
   return (
     <header className="board-header">
@@ -42,7 +44,7 @@ export function Header({
       {/* Contrôles (Nouvelle partie + Abandonner) */}
       <GameControls
         onReset={onReset}
-        onResign={onBackToMenu}   // Abandonner → retour menu
+        onResign={onResign}
         isGameOver={isGameOver}
         theme={theme}
       />

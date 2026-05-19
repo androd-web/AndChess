@@ -21,6 +21,7 @@ interface GameWizardProps {
   onStartVsAI: (opts: AIGameOptions) => void;
   onCreateRoom: () => void;
   onJoinRoom: (roomId: string) => void;
+  onLeaveRoom: () => void;
   // État socket
   roomId: string | null;
   isConnected: boolean;
@@ -109,6 +110,7 @@ export function GameWizard({
   onStartVsAI,
   onCreateRoom,
   onJoinRoom,
+  onLeaveRoom,
   roomId,
   isConnected,
   isWaiting,
@@ -840,6 +842,28 @@ export function GameWizard({
         <ThemeToggle />
         <div style={card}>
           <div style={topGlow} />
+
+          <button
+            onClick={() => {
+              onLeaveRoom();
+              setScreen("mode");
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text3)",
+              cursor: "pointer",
+              fontSize: "13px",
+              marginBottom: "24px",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            ← Annuler
+          </button>
+
           <div style={{ textAlign: "center", marginBottom: "32px" }}>
             <div
               style={{

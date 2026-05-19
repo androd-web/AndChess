@@ -126,6 +126,7 @@ function AppContent() {
         onStartVsAI={handleStartVsAI}
         onCreateRoom={handleCreateRoom}
         onJoinRoom={handleJoinRoom}
+        onLeaveRoom={socket.leaveRoom}
         roomId={roomId}
         isConnected={isConnected}
         isWaiting={roomId !== null && !gameStarted}

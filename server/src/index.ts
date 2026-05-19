@@ -2,6 +2,7 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
+import { Chess } from 'chess.js'
 import { RoomManager } from './roomManager'
 
 const app        = express()
@@ -60,15 +61,62 @@ io.on('connection', (socket) => {
 
   // Abandon
   socket.on('player_resigned', ({ roomId }) => {
-    io.to(roomId).emit('game_over', { reason: 'resign', winner: 'opponent' })
+    const result = rooms.resignPlayer(roomId, socket.id)
+    if (result.success) {
+      io.to(roomId).emit('game_over', { reason: result.reason, winner: result.winner })
+    }
+  })
+
+  // Demande de revanche
+  socket.on('rematch_request', ({ roomId }) => {
+    socket.to(roomId).emit('rematch_requested', { from: socket.id })
+  })
+
+  // Acceptation de revanche
+  socket.on('rematch_accept', ({ roomId }) => {
+    const room = rooms.getRoom(roomId)
+    if (room) {
+      room.game = new Chess()
+      room.isOver = false
+      // On peut inverser les couleurs pour la revanche si on veut, 
+      // mais restons simple : on reset juste le board.
+      io.to(roomId).emit('rematch_started', { fen: room.game.fen() })
+    }
+  })
+
+  // Refus de revanche
+  socket.on('rematch_decline', ({ roomId }) => {
+    io.to(roomId).emit('rematch_declined')
+    rooms.deleteRoom(roomId)
+  })
+
+  // Quitter la salle (retour au menu)
+  socket.on('leave_room', ({ roomId }) => {
+    socket.leave(roomId)
+    socket.to(roomId).emit('player_disconnected')
     rooms.deleteRoom(roomId)
   })
 
   // Déconnexion
   socket.on('disconnect', () => {
     const roomId = rooms.getRoomByPlayer(socket.id)
-    if (roomId) io.to(roomId).emit('player_disconnected')
+    if (roomId) {
+      io.to(roomId).emit('player_disconnected')
+      rooms.removePlayer(socket.id)
+      
+      // Si la salle est vide, on la supprime
+      const room = rooms.getRoom(roomId)
+      if (!room || room.players.length === 0) {
+        rooms.deleteRoom(roomId)
+      }
+    }
+    console.log(`[-] Déconnexion : ${socket.id}`)
   })
 })
+
+// Nettoyage automatique toutes les heures
+setInterval(() => {
+  rooms.cleanOldRooms()
+}, 60 * 60 * 1000)
 
 httpServer.listen(3001, () => console.log('Serveur sur le port 3001'))
